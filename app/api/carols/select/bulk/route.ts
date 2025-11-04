@@ -23,17 +23,26 @@ function getCarols() {
 }
 
 function saveCarols(carols: any[]) {
-  const dir = path.dirname(carolsFilePath)
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true })
+  try {
+    const dir = path.dirname(carolsFilePath)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+    // Write as UTF-8 without BOM
+    const jsonString = JSON.stringify(carols, null, 2)
+    fs.writeFileSync(carolsFilePath, jsonString, { encoding: 'utf8' })
+    console.log('File saved successfully to:', carolsFilePath)
+  } catch (error: any) {
+    console.error('Error saving carols file:', error)
+    throw new Error(`Failed to save carols: ${error.message}`)
   }
-  // Write as UTF-8 without BOM
-  fs.writeFileSync(carolsFilePath, JSON.stringify(carols, null, 2), { encoding: 'utf8' })
 }
 
 export async function POST(request: NextRequest) {
   try {
     const { carolIds, branchName, customCarolText, team } = await request.json()
+
+    console.log('POST /api/carols/select/bulk - Request received:', { carolIds, branchName, customCarolText, team })
 
     // Validate: must have exactly 2 selections total
     // Either: 2 carolIds, or 1 carolId + customCarolText, or 2 customCarolTexts (but we only support 1 Other)
@@ -70,14 +79,33 @@ export async function POST(request: NextRequest) {
     }
 
     const carols = getCarols()
+    console.log('Loaded carols:', carols.length)
+    
+    if (!Array.isArray(carols)) {
+      console.error('Carols is not an array:', typeof carols)
+      return NextResponse.json(
+        { message: 'Invalid carols data format' },
+        { status: 500 }
+      )
+    }
     
     // Check if branch has already selected this team
-    const branchCarols = carols.filter((c: any) => c.branch === branchName.trim() && c.selected)
-    const existingTeams = new Set(branchCarols.map((c: any) => c.team).filter(Boolean))
+    const branchCarols = carols.filter((c: any) => {
+      return c && c.branch && c.branch.trim() === branchName.trim() && c.selected === true
+    })
+    console.log('Branch carols for', branchName, ':', branchCarols.length)
+    const existingTeams = new Set(
+      branchCarols
+        .map((c: any) => c.team)
+        .filter((t: any) => t && typeof t === 'string' && (t.trim() === 'Team 1' || t.trim() === 'Team 2'))
+        .map((t: any) => t.trim())
+    )
+    console.log('Existing teams for', branchName, ':', Array.from(existingTeams))
     
-    if (existingTeams.has(team)) {
+    const teamTrimmed = team.trim()
+    if (existingTeams.has(teamTrimmed)) {
       return NextResponse.json(
-        { message: `This branch has already selected ${team}. Please choose ${team === 'Team 1' ? 'Team 2' : 'Team 1'}.` },
+        { message: `This branch has already selected ${teamTrimmed}. Please choose ${teamTrimmed === 'Team 1' ? 'Team 2' : 'Team 1'}.` },
         { status: 400 }
       )
     }
@@ -107,7 +135,8 @@ export async function POST(request: NextRequest) {
     // Handle custom carol
     if (hasCustom) {
       // Find the highest ID to create a new one
-      const maxId = carols.length > 0 ? Math.max(...carols.map((c: any) => c.id)) : 0
+      const validIds = carols.filter((c: any) => c.id && typeof c.id === 'number').map((c: any) => c.id)
+      const maxId = validIds.length > 0 ? Math.max(...validIds) : 19
       const newCarol = {
         id: maxId + 1,
         name: customCarolText.trim(),
@@ -117,6 +146,7 @@ export async function POST(request: NextRequest) {
       }
       carols.push(newCarol)
       selectedCarols.push(newCarol)
+      console.log('Added custom carol:', newCarol)
     }
 
     // If there are errors, return them
@@ -129,17 +159,22 @@ export async function POST(request: NextRequest) {
 
     // Select all regular carols
     for (const carol of selectedCarols) {
-      if (carol.id <= 19) { // Only update existing carols, not the custom one (already added)
-        const carolIndex = carols.findIndex((c: any) => c.id === carol.id)
-        if (carolIndex !== -1) {
+      // Check if it's a regular carol (ID <= 19) or a custom one we just added
+      const carolIndex = carols.findIndex((c: any) => c.id === carol.id)
+      if (carolIndex !== -1) {
+        // Only update if it's a regular carol (custom ones are already set)
+        if (carol.id <= 19) {
           carols[carolIndex].selected = true
           carols[carolIndex].branch = branchName.trim()
           carols[carolIndex].team = team
+          console.log('Updated carol:', carol.id, 'with team:', team)
         }
       }
     }
 
+    console.log('Saving carols...')
     saveCarols(carols)
+    console.log('Carols saved successfully')
 
     return NextResponse.json(
       { 
@@ -149,10 +184,12 @@ export async function POST(request: NextRequest) {
       },
       { status: 200 }
     )
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error selecting carols:', error)
+    console.error('Error stack:', error?.stack)
+    console.error('Error message:', error?.message)
     return NextResponse.json(
-      { message: 'Internal server error' },
+      { message: `Internal server error: ${error?.message || 'Unknown error'}` },
       { status: 500 }
     )
   }

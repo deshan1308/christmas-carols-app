@@ -9,8 +9,9 @@
   {
     "id": 2,
     "name": "සීතල සුළග හමයි",
-    "selected": false,
-    "branch": null
+    "selected": true,
+    "branch": "Kandy",
+    "team": "Team 2"
   },
   {
     "id": 3,
@@ -82,8 +83,9 @@
   {
     "id": 14,
     "name": "සීනූ හඩින් ලොව පිබිදෙනවා",
-    "selected": false,
-    "branch": null
+    "selected": true,
+    "branch": "Kandy",
+    "team": "Team 2"
   },
   {
     "id": 15,
