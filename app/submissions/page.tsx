@@ -15,24 +15,33 @@ export default function SubmissionsPage() {
   }, [])
 
   useEffect(() => {
-    // Group carols by branch
-    const grouped: Record<string, any[]> = {}
+    // Group carols by branch and team
+    const grouped: Record<string, Record<string, any[]>> = {}
     carols
       .filter((c) => c.selected && c.branch)
       .forEach((carol) => {
-        if (!grouped[carol.branch!]) {
-          grouped[carol.branch!] = []
+        const branchKey = carol.branch!
+        const teamKey = carol.team || 'No Team'
+        
+        if (!grouped[branchKey]) {
+          grouped[branchKey] = {}
         }
-        grouped[carol.branch!].push(carol)
+        if (!grouped[branchKey][teamKey]) {
+          grouped[branchKey][teamKey] = []
+        }
+        grouped[branchKey][teamKey].push(carol)
       })
     
-    // Sort branches alphabetically
-    const sorted = Object.keys(grouped).sort().reduce((acc, key) => {
-      acc[key] = grouped[key]
-      return acc
-    }, {} as Record<string, any[]>)
+    // Convert to flat structure: branch -> teams -> carols
+    const flatGrouped: Record<string, any[]> = {}
+    Object.keys(grouped).sort().forEach((branch) => {
+      Object.keys(grouped[branch]).sort().forEach((team) => {
+        const key = `${branch} - ${team}`
+        flatGrouped[key] = grouped[branch][team]
+      })
+    })
     
-    setGroupedByBranch(sorted)
+    setGroupedByBranch(flatGrouped)
   }, [carols])
 
   const branches = Object.keys(groupedByBranch)
@@ -79,29 +88,37 @@ export default function SubmissionsPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {branches.map((branch) => (
-              <div key={branch} className="bg-white rounded-lg shadow-md p-6">
-                <h2 className="text-2xl font-bold text-christmas-green mb-4 flex items-center justify-between">
-                  <span>{branch}</span>
-                  <span className="text-lg font-normal text-gray-600">
-                    {groupedByBranch[branch].length} {groupedByBranch[branch].length === 1 ? 'Carol' : 'Carols'}
-                  </span>
-                </h2>
-                <ul className="space-y-2">
-                  {groupedByBranch[branch].map((carol) => (
-                    <li
-                      key={carol.id}
-                      className="p-4 bg-green-50 rounded-lg border-2 border-christmas-green flex items-center justify-between"
-                    >
-                      <span className="font-medium text-gray-800">{carol.name}</span>
-                      <span className="px-3 py-1 bg-christmas-green text-white text-sm rounded-full">
-                        Selected
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+            {branches.map((branchTeam) => {
+              const [branch, team] = branchTeam.split(' - ')
+              return (
+                <div key={branchTeam} className="bg-white rounded-lg shadow-md p-6">
+                  <h2 className="text-2xl font-bold text-christmas-green mb-2 flex items-center justify-between">
+                    <span>{branch}</span>
+                    <span className="text-lg font-normal text-gray-600">
+                      {groupedByBranch[branchTeam].length} {groupedByBranch[branchTeam].length === 1 ? 'Carol' : 'Carols'}
+                    </span>
+                  </h2>
+                  <div className="mb-4">
+                    <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm rounded-full font-semibold">
+                      {team}
+                    </span>
+                  </div>
+                  <ul className="space-y-2">
+                    {groupedByBranch[branchTeam].map((carol) => (
+                      <li
+                        key={carol.id}
+                        className="p-4 bg-green-50 rounded-lg border-2 border-christmas-green flex items-center justify-between"
+                      >
+                        <span className="font-medium text-gray-800">{carol.name}</span>
+                        <span className="px-3 py-1 bg-christmas-green text-white text-sm rounded-full">
+                          Selected
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

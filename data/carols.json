@@ -3,7 +3,8 @@
     "id": 1,
     "name": "කලකට පෙර ඒ බෙත් ලෙහෙමේ",
     "selected": true,
-    "branch": "Kandy"
+    "branch": "Kandy",
+    "team": "Team 1"
   },
   {
     "id": 2,
@@ -51,7 +52,8 @@
     "id": 9,
     "name": "ආදර මගේ ජේසුනේ",
     "selected": true,
-    "branch": "Kandy"
+    "branch": "Kandy",
+    "team": "Team 1"
   },
   {
     "id": 10,

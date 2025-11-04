@@ -33,7 +33,7 @@ function saveCarols(carols: any[]) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { carolIds, branchName, customCarolText } = await request.json()
+    const { carolIds, branchName, customCarolText, team } = await request.json()
 
     // Validate: must have exactly 2 selections total
     // Either: 2 carolIds, or 1 carolId + customCarolText, or 2 customCarolTexts (but we only support 1 Other)
@@ -62,7 +62,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (!team || (team !== 'Team 1' && team !== 'Team 2')) {
+      return NextResponse.json(
+        { message: 'Team selection is required (Team 1 or Team 2)' },
+        { status: 400 }
+      )
+    }
+
     const carols = getCarols()
+    
+    // Check if branch has already selected this team
+    const branchCarols = carols.filter((c: any) => c.branch === branchName.trim() && c.selected)
+    const existingTeams = new Set(branchCarols.map((c: any) => c.team).filter(Boolean))
+    
+    if (existingTeams.has(team)) {
+      return NextResponse.json(
+        { message: `This branch has already selected ${team}. Please choose ${team === 'Team 1' ? 'Team 2' : 'Team 1'}.` },
+        { status: 400 }
+      )
+    }
+
     const errors: string[] = []
     const selectedCarols: any[] = []
 
@@ -93,7 +112,8 @@ export async function POST(request: NextRequest) {
         id: maxId + 1,
         name: customCarolText.trim(),
         selected: true,
-        branch: branchName.trim()
+        branch: branchName.trim(),
+        team: team
       }
       carols.push(newCarol)
       selectedCarols.push(newCarol)
@@ -114,6 +134,7 @@ export async function POST(request: NextRequest) {
         if (carolIndex !== -1) {
           carols[carolIndex].selected = true
           carols[carolIndex].branch = branchName.trim()
+          carols[carolIndex].team = team
         }
       }
     }

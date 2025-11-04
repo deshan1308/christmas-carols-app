@@ -7,6 +7,7 @@ interface Carol {
   name: string
   selected: boolean
   branch: string | null
+  team?: string | null
 }
 
 interface CarolsContextType {
@@ -21,13 +22,15 @@ interface CarolsContextType {
   tempSelectedCarols: number[]
   toggleTempCarolSelection: (carolId: number) => void
   clearTempSelection: () => void
-  submitSelection: (branchName: string, carolIds: number[], customCarolText?: string) => Promise<boolean>
+  submitSelection: (branchName: string, carolIds: number[], customCarolText?: string, team?: string) => Promise<boolean>
   isLoading: boolean
   // Other option
   isOtherSelected: boolean
   toggleOtherSelection: () => void
   customCarolText: string
   setCustomCarolText: (text: string) => void
+  // Team selection
+  checkBranchTeams: (branchName: string) => Promise<{ availableTeams: string[], canSelectTeam1: boolean, canSelectTeam2: boolean }>
 }
 
 const CarolsContext = createContext<CarolsContextType | undefined>(undefined)
@@ -201,14 +204,40 @@ export function CarolsProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const submitSelection = async (branchName: string, carolIds: number[], customCarolText?: string) => {
+  const checkBranchTeams = async (branchName: string) => {
+    try {
+      const response = await fetch(`/api/carols/branch-teams?branchName=${encodeURIComponent(branchName)}`)
+      if (response.ok) {
+        const data = await response.json()
+        return {
+          availableTeams: data.availableTeams || ['Team 1', 'Team 2'],
+          canSelectTeam1: data.canSelectTeam1 !== false,
+          canSelectTeam2: data.canSelectTeam2 !== false,
+        }
+      }
+      return {
+        availableTeams: ['Team 1', 'Team 2'],
+        canSelectTeam1: true,
+        canSelectTeam2: true,
+      }
+    } catch (error) {
+      console.error('Error checking branch teams:', error)
+      return {
+        availableTeams: ['Team 1', 'Team 2'],
+        canSelectTeam1: true,
+        canSelectTeam2: true,
+      }
+    }
+  }
+
+  const submitSelection = async (branchName: string, carolIds: number[], customCarolText?: string, team?: string) => {
     try {
       const response = await fetch('/api/carols/select/bulk', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ carolIds, branchName, customCarolText }),
+        body: JSON.stringify({ carolIds, branchName, customCarolText, team }),
       })
 
       if (response.ok) {
@@ -246,6 +275,7 @@ export function CarolsProvider({ children }: { children: ReactNode }) {
         toggleOtherSelection,
         customCarolText,
         setCustomCarolText,
+        checkBranchTeams,
       }}
     >
       {children}
