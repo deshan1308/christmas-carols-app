@@ -21,8 +21,13 @@ interface CarolsContextType {
   tempSelectedCarols: number[]
   toggleTempCarolSelection: (carolId: number) => void
   clearTempSelection: () => void
-  submitSelection: (branchName: string, carolIds: number[]) => Promise<boolean>
+  submitSelection: (branchName: string, carolIds: number[], customCarolText?: string) => Promise<boolean>
   isLoading: boolean
+  // Other option
+  isOtherSelected: boolean
+  toggleOtherSelection: () => void
+  customCarolText: string
+  setCustomCarolText: (text: string) => void
 }
 
 const CarolsContext = createContext<CarolsContextType | undefined>(undefined)
@@ -32,6 +37,8 @@ export function CarolsProvider({ children }: { children: ReactNode }) {
   const [currentBranch, setCurrentBranch] = useState<string | null>(null)
   const [tempSelectedCarols, setTempSelectedCarols] = useState<number[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isOtherSelected, setIsOtherSelected] = useState(false)
+  const [customCarolText, setCustomCarolText] = useState('')
 
   const fetchCarols = useCallback(async () => {
     setIsLoading(true)
@@ -176,16 +183,32 @@ export function CarolsProvider({ children }: { children: ReactNode }) {
 
   const clearTempSelection = () => {
     setTempSelectedCarols([])
+    setIsOtherSelected(false)
+    setCustomCarolText('')
   }
 
-  const submitSelection = async (branchName: string, carolIds: number[]) => {
+  const toggleOtherSelection = () => {
+    const currentTotal = tempSelectedCarols.length + (isOtherSelected ? 1 : 0)
+    
+    if (!isOtherSelected && currentTotal >= 2) {
+      alert('You can only select exactly 2 carols. Please deselect one first.')
+      return
+    }
+    
+    setIsOtherSelected(!isOtherSelected)
+    if (isOtherSelected) {
+      setCustomCarolText('')
+    }
+  }
+
+  const submitSelection = async (branchName: string, carolIds: number[], customCarolText?: string) => {
     try {
       const response = await fetch('/api/carols/select/bulk', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ carolIds, branchName }),
+        body: JSON.stringify({ carolIds, branchName, customCarolText }),
       })
 
       if (response.ok) {
@@ -219,6 +242,10 @@ export function CarolsProvider({ children }: { children: ReactNode }) {
         clearTempSelection,
         submitSelection,
         isLoading,
+        isOtherSelected,
+        toggleOtherSelection,
+        customCarolText,
+        setCustomCarolText,
       }}
     >
       {children}
