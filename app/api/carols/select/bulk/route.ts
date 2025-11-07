@@ -1,42 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
-
-const carolsFilePath = path.join(process.cwd(), 'data', 'carols.json')
-
-function getCarols() {
-  try {
-    // Read file as buffer first to handle encoding properly
-    const buffer = fs.readFileSync(carolsFilePath)
-    // Remove BOM if present (UTF-8 BOM is EF BB BF)
-    let fileContents: string
-    if (buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
-      fileContents = buffer.slice(3).toString('utf8')
-    } else {
-      fileContents = buffer.toString('utf8')
-    }
-    return JSON.parse(fileContents)
-  } catch (error) {
-    console.error('Error reading carols file:', error)
-    return []
-  }
-}
-
-function saveCarols(carols: any[]) {
-  try {
-    const dir = path.dirname(carolsFilePath)
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
-    }
-    // Write as UTF-8 without BOM
-    const jsonString = JSON.stringify(carols, null, 2)
-    fs.writeFileSync(carolsFilePath, jsonString, { encoding: 'utf8' })
-    console.log('File saved successfully to:', carolsFilePath)
-  } catch (error: any) {
-    console.error('Error saving carols file:', error)
-    throw new Error(`Failed to save carols: ${error.message}`)
-  }
-}
+import { getCarols, saveCarols } from '@/lib/storage'
 
 export async function POST(request: NextRequest) {
   try {
@@ -78,7 +41,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const carols = getCarols()
+    const carols = await getCarols()
     console.log('Loaded carols:', carols.length)
     
     if (!Array.isArray(carols)) {
@@ -173,7 +136,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Saving carols...')
-    saveCarols(carols)
+    await saveCarols(carols)
     console.log('Carols saved successfully')
 
     return NextResponse.json(

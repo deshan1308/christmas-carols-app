@@ -92,9 +92,11 @@ christmas-carols-selection/
 
 ## Data Persistence
 
-The application uses a JSON file (`data/carols.json`) to store carol selections. This file is automatically created and updated when carols are selected.
+The application uses:
+- **Local Development**: JSON file (`data/carols.json`) for data storage
+- **Production (Vercel)**: Vercel KV (Redis-based key-value store) for data storage
 
-**Note**: For production deployments, consider using a proper database (MongoDB, PostgreSQL, etc.) instead of a JSON file for better scalability and concurrent access handling.
+The storage layer automatically detects the environment and uses the appropriate storage method.
 
 ## Building for Production
 
@@ -156,28 +158,49 @@ vercel --prod
 
 âš ï¸ **File System Limitations**: The current implementation uses a JSON file for data storage. On serverless platforms like Vercel, the file system is read-only except for `/tmp`. 
 
-**For production, you should:**
-- Use a database (MongoDB, PostgreSQL, Firebase, etc.)
-- Or use Vercel KV (key-value store)
-- Or use a cloud storage service (AWS S3, etc.)
+#### Setting Up Vercel KV (Required for Production)
 
-### Example: Using MongoDB
+1. **Create a Vercel KV Database**:
+   - Go to your Vercel project dashboard
+   - Navigate to the "Storage" tab
+   - Click "Create Database" and select "KV"
+   - Follow the setup instructions
+
+2. **Environment Variables** (automatically set by Vercel):
+   - `KV_REST_API_URL` - KV REST API URL
+   - `KV_REST_API_TOKEN` - KV REST API token
+   - `KV_REST_API_READ_ONLY_TOKEN` - KV REST API read-only token
+
+   These are automatically added when you create a KV database in Vercel.
+
+3. **Migrate Existing Data** (if you have data in `data/carols.json`):
+   ```bash
+   # Install tsx if not already installed
+   npm install -g tsx
+   
+   # Run migration script (set env vars first)
+   npx tsx scripts/migrate-to-kv.ts
+   ```
+
+#### How It Works
+
+- **Local Development**: Uses `data/carols.json` file system storage
+- **Production (Vercel)**: Automatically uses Vercel KV when `KV_REST_API_URL` is set
+- **Fallback**: If KV is not configured in production, you'll get a clear error message
+
+### Alternative: Using MongoDB
+
+If you prefer MongoDB instead of Vercel KV:
 
 1. Install MongoDB driver:
 ```bash
 npm install mongodb
 ```
 
-2. Update API routes to use MongoDB instead of file system
+2. Update `lib/storage.ts` to use MongoDB instead of KV
 
 3. Set environment variables in Vercel dashboard:
    - `MONGODB_URI`: Your MongoDB connection string
-
-### Environment Variables
-
-If using a database, add your connection strings as environment variables in Vercel:
-- Go to Project Settings â†’ Environment Variables
-- Add your variables (e.g., `MONGODB_URI`, `DATABASE_URL`)
 
 ## Customization
 
@@ -203,13 +226,27 @@ The application uses Tailwind CSS. Customize colors and styles in `tailwind.conf
 - **TypeScript** - Type safety
 - **Tailwind CSS** - Utility-first CSS framework
 - **React Context API** - State management
-- **File System API** - Data persistence (JSON file)
+- **Vercel KV** - Data persistence in production (Redis-based key-value store)
+- **File System API** - Data persistence in local development (JSON file)
 
 ## Troubleshooting
 
 ### Issue: Data not persisting
+
+**In Production (Vercel):**
+- Ensure Vercel KV is set up and environment variables are configured
+- Check Vercel project settings → Environment Variables
+- Verify `KV_REST_API_URL` is set
+
+**In Local Development:**
 - Ensure the `data` directory has write permissions
 - Check that `data/carols.json` exists and is writable
+
+### Issue: "EROFS: read-only file system" error
+This error occurs when trying to write to the file system in a serverless environment. The app now automatically uses Vercel KV in production. Make sure:
+1. Vercel KV database is created in your Vercel project
+2. Environment variables are set (automatically done when creating KV)
+3. Run the migration script if you have existing data
 
 ### Issue: Carols not updating
 - Refresh the page to reload data from the server
