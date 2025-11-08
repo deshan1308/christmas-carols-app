@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCarols, saveCarols } from '@/lib/storage'
+import { getCarols, saveCarols, saveSubmission } from '@/lib/storage'
 
 export async function POST(request: NextRequest) {
   try {
@@ -138,6 +138,27 @@ export async function POST(request: NextRequest) {
     console.log('Saving carols...')
     await saveCarols(carols)
     console.log('Carols saved successfully')
+
+    // Save submission record
+    try {
+      const carolIdsToSave = selectedCarols
+        .filter(c => c.id && typeof c.id === 'number')
+        .map(c => c.id)
+      
+      if (carolIdsToSave.length > 0) {
+        await saveSubmission({
+          branchName: branchName.trim(),
+          team,
+          carolIds: carolIdsToSave,
+          customCarolText: hasCustom ? customCarolText.trim() : null,
+        })
+        console.log('Submission record saved successfully')
+      }
+    } catch (submissionError: any) {
+      // Log but don't fail the request if submission saving fails
+      console.error('Error saving submission record:', submissionError)
+      // Continue - the carols are already saved
+    }
 
     return NextResponse.json(
       { 

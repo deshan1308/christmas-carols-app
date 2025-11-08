@@ -186,3 +186,118 @@ function saveCarolsToFile(carols: any[]): void {
   }
 }
 
+/**
+ * Save a submission to storage (Supabase)
+ */
+export async function saveSubmission(submission: {
+  branchName: string
+  team: string
+  carolIds: number[]
+  customCarolText?: string | null
+}): Promise<any> {
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('submissions')
+        .insert({
+          branch_name: submission.branchName,
+          team: submission.team,
+          carol_ids: submission.carolIds,
+          custom_carol_text: submission.customCarolText || null,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error saving submission to Supabase:', error)
+        
+        if (isServerless) {
+          if (error.message.includes('relation') || error.message.includes('does not exist')) {
+            throw new Error(`Supabase table 'submissions' does not exist. Please run the SQL migration script in your Supabase dashboard. See SUPABASE_SETUP.md for instructions. Original error: ${error.message}`)
+          }
+          throw new Error(`Failed to save submission to Supabase: ${error.message}`)
+        }
+        
+        throw new Error(`Failed to save submission: ${error.message}`)
+      }
+
+      console.log('Submission saved successfully to Supabase')
+      return data
+    } catch (error: any) {
+      console.error('Error saving submission:', error)
+      throw error
+    }
+  }
+  
+  throw new Error('Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.')
+}
+
+/**
+ * Get all submissions from storage (Supabase)
+ */
+export async function getSubmissions(): Promise<any[]> {
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('submissions')
+        .select('*')
+        .order('submitted_at', { ascending: false })
+
+      if (error) {
+        console.error('Error reading submissions from Supabase:', error)
+        
+        if (isServerless) {
+          if (error.message.includes('relation') || error.message.includes('does not exist')) {
+            // Return empty array if table doesn't exist yet
+            console.warn('Submissions table does not exist yet')
+            return []
+          }
+          throw new Error(`Supabase error: ${error.message}`)
+        }
+        
+        return []
+      }
+
+      return Array.isArray(data) ? data : []
+    } catch (error: any) {
+      console.error('Error reading submissions:', error)
+      
+      if (isServerless) {
+        // Return empty array instead of throwing to allow page to load
+        return []
+      }
+      
+      return []
+    }
+  }
+  
+  return []
+}
+
+/**
+ * Get submissions by branch name
+ */
+export async function getSubmissionsByBranch(branchName: string): Promise<any[]> {
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('submissions')
+        .select('*')
+        .eq('branch_name', branchName)
+        .order('submitted_at', { ascending: false })
+
+      if (error) {
+        console.error('Error reading submissions by branch from Supabase:', error)
+        return []
+      }
+
+      return Array.isArray(data) ? data : []
+    } catch (error) {
+      console.error('Error reading submissions by branch:', error)
+      return []
+    }
+  }
+  
+  return []
+}
+
