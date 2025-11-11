@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
 
     const carols = await getCarols()
     console.log('Loaded carols:', carols.length)
+    console.log('Request carolIds:', carolIds)
     
     if (!Array.isArray(carols)) {
       console.error('Carols is not an array:', typeof carols)
@@ -52,8 +53,17 @@ export async function POST(request: NextRequest) {
       )
     }
     
+    // Normalize carol data - ensure selected is boolean and IDs are numbers
+    const normalizedCarols = carols.map((c: any) => ({
+      ...c,
+      id: typeof c.id === 'string' ? parseInt(c.id, 10) : c.id,
+      selected: c.selected === true || c.selected === 'true' || c.selected === 1,
+      branch: c.branch || null,
+      team: c.team || null,
+    }))
+    
     // Check if branch has already selected this team
-    const branchCarols = carols.filter((c: any) => {
+    const branchCarols = normalizedCarols.filter((c: any) => {
       return c && c.branch && c.branch.trim() === branchName.trim() && c.selected === true
     })
     console.log('Branch carols for', branchName, ':', branchCarols.length)
@@ -78,27 +88,35 @@ export async function POST(request: NextRequest) {
 
     // Handle regular carol selections
     if (carolIds && Array.isArray(carolIds) && carolIds.length > 0) {
-      for (const carolId of carolIds) {
-        const carolIndex = carols.findIndex((c: any) => c.id === carolId)
+      // Normalize carol IDs to numbers
+      const normalizedCarolIds = carolIds.map(id => typeof id === 'string' ? parseInt(id, 10) : id)
+      console.log('Normalized carol IDs:', normalizedCarolIds)
+      
+      for (const carolId of normalizedCarolIds) {
+        const carolIndex = normalizedCarols.findIndex((c: any) => c.id === carolId)
         
         if (carolIndex === -1) {
+          console.error(`Carol with ID ${carolId} not found. Available IDs:`, normalizedCarols.map((c: any) => c.id))
           errors.push(`Carol with ID ${carolId} not found`)
           continue
         }
 
-        if (carols[carolIndex].selected) {
-          errors.push(`Carol "${carols[carolIndex].name}" has already been selected by branch "${carols[carolIndex].branch}"`)
+        const carol = normalizedCarols[carolIndex]
+        if (carol.selected) {
+          const selectedBy = carol.branch ? `branch "${carol.branch}"` : 'another user'
+          console.warn(`Carol "${carol.name}" (ID: ${carol.id}) is already selected by ${selectedBy}`)
+          errors.push(`Carol "${carol.name}" has already been selected by ${selectedBy}`)
           continue
         }
 
-        selectedCarols.push(carols[carolIndex])
+        selectedCarols.push(carol)
       }
     }
 
     // Handle custom carol
     if (hasCustom) {
       // Find the highest ID to create a new one
-      const validIds = carols.filter((c: any) => c.id && typeof c.id === 'number').map((c: any) => c.id)
+      const validIds = normalizedCarols.filter((c: any) => c.id && typeof c.id === 'number').map((c: any) => c.id)
       const maxId = validIds.length > 0 ? Math.max(...validIds) : 19
       const newCarol = {
         id: maxId + 1,
@@ -107,7 +125,7 @@ export async function POST(request: NextRequest) {
         branch: branchName.trim(),
         team: team
       }
-      carols.push(newCarol)
+      normalizedCarols.push(newCarol)
       selectedCarols.push(newCarol)
       console.log('Added custom carol:', newCarol)
     }
@@ -123,20 +141,20 @@ export async function POST(request: NextRequest) {
     // Select all regular carols
     for (const carol of selectedCarols) {
       // Check if it's a regular carol (ID <= 19) or a custom one we just added
-      const carolIndex = carols.findIndex((c: any) => c.id === carol.id)
+      const carolIndex = normalizedCarols.findIndex((c: any) => c.id === carol.id)
       if (carolIndex !== -1) {
         // Only update if it's a regular carol (custom ones are already set)
         if (carol.id <= 19) {
-          carols[carolIndex].selected = true
-          carols[carolIndex].branch = branchName.trim()
-          carols[carolIndex].team = team
+          normalizedCarols[carolIndex].selected = true
+          normalizedCarols[carolIndex].branch = branchName.trim()
+          normalizedCarols[carolIndex].team = team
           console.log('Updated carol:', carol.id, 'with team:', team)
         }
       }
     }
 
     console.log('Saving carols...')
-    await saveCarols(carols)
+    await saveCarols(normalizedCarols)
     console.log('Carols saved successfully')
 
     // Save submission record

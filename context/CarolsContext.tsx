@@ -246,7 +246,12 @@ export function CarolsProvider({ children }: { children: ReactNode }) {
         return true
       } else {
         const error = await response.json()
-        alert(error.message || 'Failed to submit selection')
+        // Show detailed errors if available
+        let errorMessage = error.message || 'Failed to submit selection'
+        if (error.errors && Array.isArray(error.errors) && error.errors.length > 0) {
+          errorMessage += '\n\n' + error.errors.join('\n')
+        }
+        alert(errorMessage)
         return false
       }
     } catch (error) {
