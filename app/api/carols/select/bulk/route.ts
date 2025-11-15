@@ -62,9 +62,9 @@ export async function POST(request: NextRequest) {
       team: c.team || null,
     }))
     
-    // Check if branch has already selected this team
+    // Check if branch has already selected this team (case-insensitive comparison)
     const branchCarols = normalizedCarols.filter((c: any) => {
-      return c && c.branch && c.branch.trim() === branchName.trim() && c.selected === true
+      return c && c.branch && c.branch.trim().toUpperCase() === branchName.trim().toUpperCase() && c.selected === true
     })
     console.log('Branch carols for', branchName, ':', branchCarols.length)
     const existingTeams = new Set(
@@ -130,8 +130,27 @@ export async function POST(request: NextRequest) {
       console.log('Added custom carol:', newCarol)
     }
 
-    // If there are errors, return them
+    // If there are errors, save submission with error information and return them
     if (errors.length > 0) {
+      // Save submission with errors for tracking
+      try {
+        const carolIdsToSave = selectedCarols
+          .filter(c => c.id && typeof c.id === 'number')
+          .map(c => c.id)
+        
+        // Save submission even with errors (with empty carol_ids if none succeeded)
+        await saveSubmission({
+          branchName: branchName.trim(),
+          team,
+          carolIds: carolIdsToSave,
+          customCarolText: hasCustom ? customCarolText.trim() : null,
+          errors: errors, // Include error information
+        })
+        console.log('Submission record saved with errors')
+      } catch (submissionError: any) {
+        console.error('Error saving submission record with errors:', submissionError)
+      }
+      
       return NextResponse.json(
         { message: 'Some carols could not be selected', errors },
         { status: 400 }

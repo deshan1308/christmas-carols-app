@@ -18,6 +18,16 @@ export default function CarolList() {
   const availableCarols = carols.filter((carol) => !carol.selected)
   const selectedCarols = carols.filter((carol) => carol.selected)
   
+  // Debug: Log selected carols to verify they're being received
+  if (selectedCarols.length > 0) {
+    console.log('CarolList - Selected carols:', selectedCarols.map(c => ({
+      id: c.id,
+      name: c.name,
+      branch: c.branch,
+      selected: c.selected
+    })))
+  }
+  
   // Calculate total selections (carols + other)
   const totalSelections = tempSelectedCarols.length + (isOtherSelected ? 1 : 0)
 

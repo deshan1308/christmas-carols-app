@@ -6,11 +6,14 @@ import { useCarols } from '@/context/CarolsContext'
 
 interface Submission {
   id: number
-  branch_name: string
+  _name: string // Using _name to match Supabase schema
+  branch_name?: string // Keep for backward compatibility
   team: string
   carol_ids: number[]
   custom_carol_text?: string | null
   submitted_at: string
+  errors?: string[] // Parsed errors from custom_carol_text
+  actualCustomCarol?: string | null // Actual custom carol text without errors
 }
 
 export default function SubmissionsPage() {
@@ -26,13 +29,44 @@ export default function SubmissionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Helper function to parse errors from custom_carol_text
+  const parseSubmissionErrors = (customCarolText: string | null | undefined): { errors: string[], actualCustomCarol: string | null } => {
+    if (!customCarolText) {
+      return { errors: [], actualCustomCarol: null }
+    }
+    
+    const errorsIndex = customCarolText.indexOf('__ERRORS__:')
+    if (errorsIndex !== -1) {
+      try {
+        const errorsJson = customCarolText.substring(errorsIndex + '__ERRORS__:'.length)
+        const errors = JSON.parse(errorsJson)
+        const actualCustomCarol = customCarolText.substring(0, errorsIndex).trim() || null
+        return { errors: Array.isArray(errors) ? errors : [], actualCustomCarol }
+      } catch (e) {
+        console.error('Error parsing errors from submission:', e)
+        return { errors: [], actualCustomCarol: customCarolText }
+      }
+    }
+    
+    return { errors: [], actualCustomCarol: customCarolText }
+  }
+
   const fetchSubmissions = async () => {
     try {
       setIsLoading(true)
       const response = await fetch('/api/submissions')
       if (response.ok) {
         const data = await response.json()
-        setSubmissions(data)
+        // Parse errors from submissions
+        const parsedData = data.map((sub: Submission) => {
+          const { errors, actualCustomCarol } = parseSubmissionErrors(sub.custom_carol_text)
+          return {
+            ...sub,
+            errors,
+            actualCustomCarol,
+          }
+        })
+        setSubmissions(parsedData)
       } else {
         console.error('Failed to fetch submissions')
       }
@@ -48,7 +82,8 @@ export default function SubmissionsPage() {
     const grouped: Record<string, Record<string, Submission[]>> = {}
     
     submissions.forEach((submission) => {
-      const branchKey = submission.branch_name
+      // Use _name if available, fallback to branch_name for backward compatibility
+      const branchKey = submission._name || submission.branch_name || 'Unknown'
       const teamKey = submission.team || 'No Team'
       
       if (!grouped[branchKey]) {
@@ -167,16 +202,42 @@ export default function SubmissionsPage() {
                     {branchSubmissions.map((submission) => (
                       <div
                         key={submission.id}
-                        className="p-4 bg-green-50 rounded-lg border-2 border-christmas-green"
+                        className={`p-4 rounded-lg border-2 ${
+                          submission.errors && submission.errors.length > 0
+                            ? 'bg-yellow-50 border-yellow-400'
+                            : 'bg-green-50 border-christmas-green'
+                        }`}
                       >
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-sm text-gray-500">
                             Submitted: {formatDate(submission.submitted_at)}
                           </span>
-                          <span className="px-3 py-1 bg-christmas-green text-white text-sm rounded-full">
-                            {submission.carol_ids.length + (submission.custom_carol_text ? 1 : 0)} {submission.carol_ids.length + (submission.custom_carol_text ? 1 : 0) === 1 ? 'Carol' : 'Carols'}
-                          </span>
+                          <div className="flex gap-2">
+                            {submission.errors && submission.errors.length > 0 && (
+                              <span className="px-3 py-1 bg-red-500 text-white text-sm rounded-full">
+                                {submission.errors.length} Error{submission.errors.length === 1 ? '' : 's'}
+                              </span>
+                            )}
+                            <span className={`px-3 py-1 text-white text-sm rounded-full ${
+                              submission.errors && submission.errors.length > 0 ? 'bg-yellow-500' : 'bg-christmas-green'
+                            }`}>
+                              {submission.carol_ids.length + (submission.actualCustomCarol ? 1 : 0)} {submission.carol_ids.length + (submission.actualCustomCarol ? 1 : 0) === 1 ? 'Carol' : 'Carols'}
+                            </span>
+                          </div>
                         </div>
+                        
+                        {/* Display errors if any */}
+                        {submission.errors && submission.errors.length > 0 && (
+                          <div className="mb-3 p-3 bg-red-50 rounded-lg border-2 border-red-300">
+                            <h4 className="font-semibold text-red-800 mb-2">⚠️ Errors:</h4>
+                            <ul className="list-disc list-inside space-y-1">
+                              {submission.errors.map((error, idx) => (
+                                <li key={idx} className="text-sm text-red-700">{error}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        
                         <ul className="space-y-2">
                           {submission.carol_ids.map((carolId) => (
                             <li
@@ -186,9 +247,9 @@ export default function SubmissionsPage() {
                               <span className="font-medium text-gray-800">{getCarolName(carolId)}</span>
                             </li>
                           ))}
-                          {submission.custom_carol_text && (
+                          {submission.actualCustomCarol && (
                             <li className="p-2 bg-white rounded border border-green-200">
-                              <span className="font-medium text-gray-800">{submission.custom_carol_text}</span>
+                              <span className="font-medium text-gray-800">{submission.actualCustomCarol}</span>
                               <span className="ml-2 px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">Custom</span>
                             </li>
                           )}

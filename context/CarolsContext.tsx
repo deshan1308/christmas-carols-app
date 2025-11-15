@@ -58,8 +58,10 @@ export function CarolsProvider({ children }: { children: ReactNode }) {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
         },
-        cache: 'no-cache',
+        cache: 'no-store', // Force no caching
       })
       
       console.log('Response received:', {

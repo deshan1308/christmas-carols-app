@@ -39,7 +39,35 @@ export async function getCarols(): Promise<any[]> {
       }
 
       if (Array.isArray(data) && data.length > 0) {
-        return data
+        // Normalize carol data - ensure selected is boolean and IDs are numbers
+        const normalized = data.map((c: any) => {
+          // Normalize selected field - handle various formats
+          let selected = false
+          if (c.selected === true || c.selected === 'true' || c.selected === 1 || c.selected === '1') {
+            selected = true
+          }
+          
+          return {
+            ...c,
+            id: typeof c.id === 'string' ? parseInt(c.id, 10) : c.id,
+            selected: selected,
+            branch: c.branch || null, // Preserve branch name
+            team: c.team || null,
+          }
+        })
+        
+        // Debug: Log selected carols with branch names
+        const selectedCarols = normalized.filter(c => c.selected)
+        if (selectedCarols.length > 0) {
+          console.log('Selected carols from database:', selectedCarols.map(c => ({
+            id: c.id,
+            name: c.name,
+            branch: c.branch,
+            selected: c.selected
+          })))
+        }
+        
+        return normalized
       }
 
       // If no data in Supabase, try to initialize from file system (only in local dev)
@@ -90,13 +118,27 @@ export async function saveCarols(carols: any[]): Promise<void> {
         team: carol.team || null,
       }))
 
+      // Debug: Log what we're saving
+      const selectedToSave = carolsToUpsert.filter(c => c.selected)
+      if (selectedToSave.length > 0) {
+        console.log('Saving to Supabase - Selected carols:', selectedToSave.map(c => ({
+          id: c.id,
+          name: c.name,
+          branch: c.branch,
+          selected: c.selected,
+          team: c.team
+        })))
+      }
+
       // Upsert all carols
-      const { error } = await supabase
+      const { error, data: upsertedData } = await supabase
         .from('carols')
         .upsert(carolsToUpsert, { onConflict: 'id' })
+        .select()
 
       if (error) {
-        console.error('Error saving to Supabase:', error)
+        console.error('❌ Error saving to Supabase:', error)
+        console.error('Error details:', JSON.stringify(error, null, 2))
         
         // In serverless, never fall back to file system - throw error
         if (isServerless) {
@@ -113,7 +155,18 @@ export async function saveCarols(carols: any[]): Promise<void> {
         return
       }
 
-      console.log('Carols saved successfully to Supabase')
+      console.log('✅ Carols saved successfully to Supabase')
+      if (upsertedData && upsertedData.length > 0) {
+        const savedSelected = upsertedData.filter((c: any) => c.selected)
+        if (savedSelected.length > 0) {
+          console.log('✅ Verified saved selected carols:', savedSelected.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            branch: c.branch,
+            selected: c.selected
+          })))
+        }
+      }
       return
     } catch (error: any) {
       console.error('Error saving to Supabase:', error)
@@ -194,16 +247,31 @@ export async function saveSubmission(submission: {
   team: string
   carolIds: number[]
   customCarolText?: string | null
+  errors?: string[] // Optional errors array
 }): Promise<any> {
   if (isSupabaseConfigured) {
     try {
+      // Store errors as JSON string in custom_carol_text if there are errors and no custom carol
+      // Otherwise, store errors in a separate way (we'll use custom_carol_text with a prefix)
+      let customCarolText = submission.customCarolText || null
+      if (submission.errors && submission.errors.length > 0) {
+        // If there are errors, append them to custom_carol_text or store separately
+        // We'll store errors as a JSON string prefixed with "__ERRORS__:"
+        const errorsJson = JSON.stringify(submission.errors)
+        if (customCarolText) {
+          customCarolText = `${customCarolText}\n__ERRORS__:${errorsJson}`
+        } else {
+          customCarolText = `__ERRORS__:${errorsJson}`
+        }
+      }
+      
       const { data, error } = await supabase
         .from('submissions')
         .insert({
-          branch_name: submission.branchName,
+          _name: submission.branchName, // Using _name to match Supabase schema
           team: submission.team,
           carol_ids: submission.carolIds,
-          custom_carol_text: submission.customCarolText || null,
+          custom_carol_text: customCarolText,
         })
         .select()
         .single()
@@ -283,7 +351,7 @@ export async function getSubmissionsByBranch(branchName: string): Promise<any[]>
       const { data, error } = await supabase
         .from('submissions')
         .select('*')
-        .eq('branch_name', branchName)
+        .eq('_name', branchName) // Using _name to match Supabase schema
         .order('submitted_at', { ascending: false })
 
       if (error) {
@@ -299,5 +367,115 @@ export async function getSubmissionsByBranch(branchName: string): Promise<any[]>
   }
   
   return []
+}
+
+/**
+ * Delete all submissions for a branch (case-insensitive)
+ */
+export async function deleteSubmissionsByBranch(branchName: string): Promise<number> {
+  if (isSupabaseConfigured) {
+    try {
+      // First, get all submissions for this branch (case-insensitive)
+      // Select all columns to handle different schema variations
+      const { data: submissions, error: fetchError } = await supabase
+        .from('submissions')
+        .select('*')
+      
+      if (fetchError) {
+        console.error('Error fetching submissions:', fetchError)
+        throw new Error(`Failed to fetch submissions: ${fetchError.message}`)
+      }
+
+      // Filter case-insensitively - check both _name and branch_name columns
+      const branchSubmissions = (submissions || []).filter((s: any) => {
+        const name = s._name || s.branch_name
+        return name && name.trim().toUpperCase() === branchName.trim().toUpperCase()
+      })
+
+      if (branchSubmissions.length === 0) {
+        console.log(`No submissions found for branch: ${branchName}`)
+        return 0
+      }
+
+      // Delete all submissions for this branch
+      const idsToDelete = branchSubmissions.map((s: any) => s.id)
+      const { error: deleteError } = await supabase
+        .from('submissions')
+        .delete()
+        .in('id', idsToDelete)
+
+      if (deleteError) {
+        console.error('Error deleting submissions:', deleteError)
+        throw new Error(`Failed to delete submissions: ${deleteError.message}`)
+      }
+
+      console.log(`Deleted ${idsToDelete.length} submission(s) for branch: ${branchName}`)
+      return idsToDelete.length
+    } catch (error: any) {
+      console.error('Error deleting submissions:', error)
+      throw error
+    }
+  }
+  
+  throw new Error('Supabase is not configured.')
+}
+
+/**
+ * Reset carols selected by a branch (case-insensitive)
+ */
+export async function resetCarolsByBranch(branchName: string): Promise<number> {
+  if (isSupabaseConfigured) {
+    try {
+      // Get all carols
+      const carols = await getCarols()
+      
+      // Find carols selected by this branch (case-insensitive)
+      const branchCarols = carols.filter((c: any) => 
+        c.branch && c.branch.trim().toUpperCase() === branchName.trim().toUpperCase() && c.selected
+      )
+
+      if (branchCarols.length === 0) {
+        console.log(`No carols found selected by branch: ${branchName}`)
+        return 0
+      }
+
+      // Reset these carols: set selected=false, branch=null, team=null
+      // Include name field as it's required
+      const updates = branchCarols.map((c: any) => ({
+        id: c.id,
+        name: c.name, // Required field
+        selected: false,
+        branch: null,
+        team: null,
+      }))
+
+      // Update carols
+      const { error } = await supabase
+        .from('carols')
+        .upsert(updates, { onConflict: 'id' })
+
+      if (error) {
+        console.error('Error resetting carols:', error)
+        throw new Error(`Failed to reset carols: ${error.message}`)
+      }
+
+      console.log(`Reset ${updates.length} carol(s) for branch: ${branchName}`)
+      return updates.length
+    } catch (error: any) {
+      console.error('Error resetting carols:', error)
+      throw error
+    }
+  }
+  
+  throw new Error('Supabase is not configured.')
+}
+
+/**
+ * Delete submissions and reset carols for a branch
+ */
+export async function deleteBranchData(branchName: string): Promise<{ submissionsDeleted: number, carolsReset: number }> {
+  const submissionsDeleted = await deleteSubmissionsByBranch(branchName)
+  const carolsReset = await resetCarolsByBranch(branchName)
+  return { submissionsDeleted, carolsReset }
 }
 

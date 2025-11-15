@@ -15,8 +15,10 @@ export async function GET(request: NextRequest) {
 
     const carols = await getCarols()
     
-    // Find all carols selected by this branch
-    const branchCarols = carols.filter((c: any) => c.branch === branchName && c.selected)
+    // Find all carols selected by this branch (case-insensitive comparison)
+    const branchCarols = carols.filter((c: any) => 
+      c.branch && c.branch.trim().toUpperCase() === branchName.trim().toUpperCase() && c.selected
+    )
     
     // Get unique teams from this branch's selections
     const teams = new Set<string>()
